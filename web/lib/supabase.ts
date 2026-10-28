@@ -1,0 +1,11 @@
+import { createClient } from "@supabase/supabase-js";
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!url || !key) {
+  throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in web/.env.local (see web/.env.example).");
+}
+
+// Read-only: the database's row-level security lets the public key select, never write.
+export const supabase = createClient(url, key, { auth: { persistSession: false } });
