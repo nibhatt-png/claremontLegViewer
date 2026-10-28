@@ -6,7 +6,10 @@ from pipeline.config import database_url
 
 def connect() -> psycopg.Connection:
     try:
-        return psycopg.connect(database_url(), connect_timeout=15)
+        return psycopg.connect(
+            database_url(), connect_timeout=15,
+            keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3,
+        )
     except psycopg.OperationalError as e:
         msg = str(e)
         if "failed to resolve host 'db." in msg and ".supabase.co'" in msg:

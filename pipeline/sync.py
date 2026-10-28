@@ -1,19 +1,25 @@
 """Sync Claremont meetings from Legistar into Postgres: python -m pipeline.sync [--dry-run]
 
 Steps: bodies -> events in the date window -> agenda items -> matters (staff report
-text) and attachment records. Events whose EventLastModifiedUtc hasn't changed since
+text) and attachment records -> text of new attachment PDFs -> summaries for items
+that don't have one. Events whose EventLastModifiedUtc hasn't changed since
 the last run are skipped unless --full is given.
 """
 
 import argparse
 import logging
+import os
 import re
 from collections import Counter
 from datetime import datetime, timedelta
 
-from pipeline import db
+import anthropic
+import psycopg
+from psycopg.types.json import Jsonb
+
+from pipeline import db, pdf, summarize
 from pipeline.config import LOCAL_TZ
-from pipeline.legistar import Legistar
+from pipeline.legistar import FileTooLarge, Legistar
 
 log = logging.getLogger("sync")
 
@@ -174,6 +180,110 @@ class Sync:
                 )
             self.record("attachments", outcome)
 
+    def extract_attachments(self) -> None:
+        """Download and extract text for attachments not processed yet (text_status is null).
+
+        sync_matter() resets text_status when an attachment's file changes, so this
+        only touches new or changed PDFs.
+        """
+        todo = self.conn.execute(
+            "select id, name, url from attachments where text_status is null order by id"
+        ).fetchall()
+        log.info("%d attachment PDFs to process", len(todo))
+        for att_id, name, url in todo:
+            try:
+                data = self.api.download(url)
+            except FileTooLarge as e:
+                log.warning("  skipped: %s", e)
+                data = None
+            except RuntimeError as e:
+                # Network trouble: leave text_status null so the next run tries again.
+                log.warning("  will retry next run: %s (%s)", name, e)
+                self.record("attachment_text", "retry_later")
+                continue
+            if data is None:
+                text, status = None, "failed"
+            else:
+                text, status = pdf.extract(data)
+            self.reconnect_if_dropped()
+            self.conn.execute(
+                "update attachments set extracted_text = %s, text_status = %s, fetched_at = now() where id = %s",
+                (text, status, att_id),
+            )
+            self.record("attachment_text", status)
+            log.info("  %s: %s (%d chars) %s", status, name, len(text or ""), "" if status == "ok" else url)
+            self.finish()
+
+    def generate_summaries(self, limit: int | None) -> None:
+        """Summarize real agenda items that don't have a summary yet, newest meetings first."""
+        rows = self.conn.execute("""
+            select i.id, i.agenda_number, i.title, i.action_text, i.section, b.name, e.date,
+                   m.staff_report_text, i.matter_id
+              from event_items i
+              join events e on e.id = i.event_id
+              join bodies b on b.id = e.body_id
+              join matters m on m.id = i.matter_id
+              left join summaries s on s.event_item_id = i.id
+             where s.event_item_id is null
+             order by e.date desc, i.sort_order
+        """).fetchall()
+        log.info("%d agenda items need summaries", len(rows))
+        if not rows:
+            return
+        summarizer = None
+        if self.dry_run:
+            log.info("Dry run: templated summaries only, no Claude calls")
+        elif not os.environ.get("ANTHROPIC_API_KEY"):
+            log.warning("ANTHROPIC_API_KEY is not set: templated summaries only")
+        else:
+            summarizer = summarize.Summarizer()
+
+        claude_calls = 0
+        for row in rows:
+            *fields, matter_id = row
+            atts = self.conn.execute(
+                "select name, extracted_text from attachments where matter_id = %s order by id", (matter_id,)
+            ).fetchall()
+            item = summarize.Item(*fields, attachments=atts)
+            source = summarize.build_source(item)
+            if result := summarize.templated(item):
+                model = summarize.TEMPLATE_MODEL
+            elif summarizer is None or (limit is not None and claude_calls >= limit):
+                continue
+            else:
+                claude_calls += 1
+                try:
+                    result, model = summarizer.summarize(item, source)
+                except (anthropic.APIError, RuntimeError) as e:
+                    log.warning("  item %s: summary failed: %s", item.id, e)
+                    self.record("summaries", "failed")
+                    continue
+            flags = summarize.fact_check(result, source)
+            self.reconnect_if_dropped()
+            self.record("summaries", db.upsert(self.conn, "summaries", {
+                "event_item_id": item.id,
+                **result.model_dump(),
+                "flags": Jsonb(flags),
+                "model": model,
+                "prompt_version": summarize.PROMPT_VERSION,
+            }, key="event_item_id"))
+            if flags:
+                self.record("summaries", "flagged")
+            log.info("  %s %s #%s %s: %s%s", item.date, item.body, item.agenda_number, model,
+                     result.one_line, f"  FLAGGED: {flags}" if flags else "")
+            self.finish()
+        if summarizer:
+            log.info("Claude calls: %d, estimated cost $%.2f", claude_calls, summarizer.cost)
+
+    def reconnect_if_dropped(self) -> None:
+        """Supabase's pooler can drop a connection left idle during slow downloads."""
+        try:
+            self.conn.execute("select 1")
+        except psycopg.OperationalError:
+            log.info("Database connection dropped; reconnecting")
+            self.conn.close()
+            self.conn = db.connect()
+
     def refresh_search(self) -> None:
         self.conn.execute("select refresh_item_search()")
         self.finish()
@@ -185,17 +295,24 @@ def main() -> None:
     parser.add_argument("--days-ahead", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true", help="fetch everything but roll back all database writes")
     parser.add_argument("--full", action="store_true", help="re-sync events even if they haven't changed")
+    parser.add_argument("--skip-summaries", action="store_true", help="don't generate summaries")
+    parser.add_argument("--summary-limit", type=int, help="max number of Claude summary calls this run")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
     today = datetime.now(LOCAL_TZ).date()
     api = Legistar()
 
-    with db.connect() as conn:
-        sync = Sync(conn, api, dry_run=args.dry_run, full=args.full)
+    sync = Sync(db.connect(), api, dry_run=args.dry_run, full=args.full)
+    try:
         sync.sync_bodies()
         sync.sync_events(today - timedelta(days=args.days_back), today + timedelta(days=args.days_ahead))
+        sync.extract_attachments()
+        if not args.skip_summaries:
+            sync.generate_summaries(args.summary_limit)
         sync.refresh_search()
+    finally:
+        sync.conn.close()
 
     prefix = "DRY RUN (nothing saved) - " if args.dry_run else ""
     log.info("%sDone. %d Legistar requests.", prefix, api.request_count)

@@ -21,30 +21,35 @@ class Legistar:
         self.session.headers["User-Agent"] = "claremont-legislation-explorer (civic data sync)"
         self.request_count = 0
 
-    def get(self, path: str, params: dict | None = None):
-        """GET a path, retrying with exponential backoff on network errors, 429s and 5xx.
-
-        Returns None on 404.
+    def _request(self, url: str, params: dict | None = None, read=lambda r: r.json()):
+        """GET a URL and return read(response), retrying with exponential backoff on
+        network errors, timeouts, 429s and 5xx. Returns None on 404.
         """
-        url = f"{self.base}/{path.lstrip('/')}"
         for attempt in range(self.max_retries):
             time.sleep(self.delay)
             self.request_count += 1
             try:
-                resp = self.session.get(url, params=params, timeout=30)
-            except requests.RequestException as e:
+                with self.session.get(url, params=params, timeout=30, stream=True) as resp:
+                    if resp.status_code == 404:
+                        return None
+                    if resp.status_code != 429 and resp.status_code < 500:
+                        resp.raise_for_status()
+                        return read(resp)
+                    problem = f"HTTP {resp.status_code}"
+            except (requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError, TimeoutError) as e:
                 problem = str(e)
-            else:
-                if resp.status_code == 404:
-                    return None
-                if resp.status_code != 429 and resp.status_code < 500:
-                    resp.raise_for_status()
-                    return resp.json()
-                problem = f"HTTP {resp.status_code}"
             wait = 2 ** attempt
-            log.warning("GET %s failed (%s); retrying in %ss", path, problem, wait)
+            log.warning("GET %s failed (%s); retrying in %ss", url, problem, wait)
             time.sleep(wait)
-        raise RuntimeError(f"GET {path} failed after {self.max_retries} attempts")
+        raise RuntimeError(f"GET {url} failed after {self.max_retries} attempts")
+
+    def get(self, path: str, params: dict | None = None):
+        """GET a Web API path and return the parsed JSON (None on 404)."""
+        return self._request(f"{self.base}/{path.lstrip('/')}", params)
+
+    def download(self, url: str) -> bytes | None:
+        """Download a document (e.g. an attachment PDF). Returns None on 404."""
+        return self._request(url, read=_read_body)
 
     def get_all(self, path: str, params: dict | None = None) -> list:
         """GET every page of a list endpoint using $top/$skip."""
@@ -80,3 +85,24 @@ class Legistar:
         match = [v for v in versions if v["Value"] == version]
         text_id = (match or versions)[-1]["Key"]
         return self.get(f"matters/{matter_id}/texts/{text_id}")
+
+
+DOWNLOAD_DEADLINE = 120  # seconds for a whole file; a stalled server otherwise trickles forever
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
+
+
+class FileTooLarge(Exception):
+    pass
+
+
+def _read_body(resp: requests.Response) -> bytes:
+    deadline = time.monotonic() + DOWNLOAD_DEADLINE
+    chunks, size = [], 0
+    for chunk in resp.iter_content(64 * 1024):
+        size += len(chunk)
+        if size > MAX_DOWNLOAD_BYTES:
+            raise FileTooLarge(f"{resp.url} is over {MAX_DOWNLOAD_BYTES // 1024 // 1024} MB")
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"download took longer than {DOWNLOAD_DEADLINE}s")
+        chunks.append(chunk)
+    return b"".join(chunks)
