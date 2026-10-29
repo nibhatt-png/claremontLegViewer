@@ -14,7 +14,7 @@ Summaries are AI-generated and labeled as unofficial on every page.
 ```
 Legistar Web API ──> pipeline/ (Python) ──> Postgres on Supabase <── web/ (Next.js)
                         │
-                        └── Claude (summaries)
+                        └── Ollama on your computer, or Claude (summaries)
 ```
 
 `python -m pipeline.sync` does everything in one run:
@@ -27,7 +27,8 @@ Legistar Web API ──> pipeline/ (Python) ──> Postgres on Supabase <──
 4. Downloads attachment PDFs that are new or changed and extracts their text (PyMuPDF,
    with pdfplumber as a fallback for garbled text). Scanned PDFs are marked `needs_ocr`.
 5. Writes summaries for items that don't have one. Minutes and warrant registers get a
-   template; everything else goes to Claude using [pipeline/prompts/summary_v1.md](pipeline/prompts/summary_v1.md).
+   template; everything else goes to a language model using [pipeline/prompts/summary_v1.md](pipeline/prompts/summary_v1.md):
+   a local [Ollama](https://ollama.com) model by default, or Claude with `SUMMARY_PROVIDER=anthropic`.
    Each summary is fact-checked: every dollar amount and date must appear in the source.
    Summaries that fail are saved with `flags` and stay hidden on the site until someone
    sets `reviewed = true`.
@@ -48,7 +49,8 @@ Re-running is safe: Legistar IDs are the primary keys, and rows are only written
 ## Setup
 
 You need Python 3.11+, Node.js 20+, a [Supabase](https://supabase.com) project (the free tier is enough),
-and an [Anthropic API key](https://console.anthropic.com) for summaries.
+and, for summaries, either [Ollama](https://ollama.com) running on your computer or an
+[Anthropic API key](https://console.anthropic.com).
 
 ### 1. Database
 
@@ -58,7 +60,11 @@ and an [Anthropic API key](https://console.anthropic.com) for summaries.
 3. Copy `.env.example` to `.env` and fill in `DATABASE_URL`. Replace `[YOUR-PASSWORD]` with your
    password, without the brackets. If the password contains `@`, `:`, `/` or `#`, write it URL-encoded
    (for example `@` becomes `%40`).
-4. Add `ANTHROPIC_API_KEY` to `.env`.
+4. Choose how summaries are written (see `.env.example`):
+   - **Ollama (default, free):** install Ollama, run `ollama pull <model>`, and set `OLLAMA_MODEL`.
+     Summaries are only written when you run the sync on a computer where Ollama is running.
+     Small models (3B) make more mistakes; with 32 GB+ of memory, a 14B–27B model is much better.
+   - **Claude:** set `SUMMARY_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`.
 
 ### 2. Sync
 
@@ -77,12 +83,13 @@ Useful flags:
 | `--full` | Re-sync every meeting even if Legistar says it hasn't changed |
 | `--days-back N`, `--days-ahead N` | Change the date window (default 60 and 30) |
 | `--skip-summaries` | Don't write summaries |
-| `--summary-limit N` | Make at most N Claude calls this run |
+| `--summary-limit N` | Write at most N model summaries this run |
 
 The first run takes about 25 minutes, mostly downloading PDFs. Later runs take seconds unless agendas changed.
+With Ollama, each summary takes roughly 10–60 seconds depending on the model.
 
-**Cost:** summaries use Claude Opus 5.5 at roughly 3–5 cents per agenda item, about $1 a month
-at Claremont's meeting volume. Each run logs its estimated cost.
+**Cost:** Ollama is free. Claude Opus 5.5 costs roughly 3–5 cents per agenda item, about $1 a month
+at Claremont's meeting volume; each run logs its estimated cost.
 
 ### 3. Website
 
@@ -102,9 +109,14 @@ Pages are cached and refreshed every 10 minutes.
 ### 4. Scheduled sync
 
 [.github/workflows/sync.yml](.github/workflows/sync.yml) runs the sync nightly, plus Thursday and Friday
-afternoons (Pacific time) when agendas are posted. Add two repository secrets under
-**Settings → Secrets and variables → Actions**: `DATABASE_URL` and `ANTHROPIC_API_KEY`. You can also run it
-by hand from the **Actions** tab, optionally with flags like `--full`.
+afternoons (Pacific time) when agendas are posted. Add the repository secret `DATABASE_URL` under
+**Settings → Secrets and variables → Actions**. You can also run it by hand from the **Actions** tab,
+optionally with flags like `--full`.
+
+GitHub's servers can't reach Ollama on your computer, so the scheduled runs load meetings, PDFs and
+template summaries only. Run `python -m pipeline.sync` on your computer to write the rest. To have the
+scheduled runs write summaries too, switch to Claude: add the `ANTHROPIC_API_KEY` secret and set
+`SUMMARY_PROVIDER: anthropic` in the workflow's `env`.
 
 ## Reviewing flagged summaries
 
@@ -135,7 +147,7 @@ pipeline/
   sync.py        the CLI entry point
   legistar.py    Legistar API client (request delay, retries, download limits)
   pdf.py         PDF text extraction
-  summarize.py   templates, Claude call, fact check
+  summarize.py   templates, Ollama and Claude calls, fact check
   prompts/       the summary prompt
 web/             Next.js site (App Router)
 ```

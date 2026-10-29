@@ -1,12 +1,14 @@
 """Plain-English summaries of agenda items.
 
 Routine items (minutes, warrant registers) get a templated summary. Everything else
-goes to Claude with the prompt in prompts/. Every summary is then fact-checked:
+goes to a language model with the prompt in prompts/: a local Ollama model by default,
+or Claude when SUMMARY_PROVIDER=anthropic. Every summary is then fact-checked:
 each dollar amount and date it mentions must appear in the source text, or the
 summary is flagged and stays hidden on the site until someone reviews it.
 """
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -15,11 +17,12 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import anthropic
-from pydantic import BaseModel, Field
+import requests
+from pydantic import BaseModel, Field, ValidationError
 
 log = logging.getLogger(__name__)
 
-MODEL = "claude-opus-5-5"
+MODEL = "claude-opus-5-5"  # used when SUMMARY_PROVIDER=anthropic
 PROMPT_FILE = Path(__file__).parent / "prompts" / "summary_v1.md"
 PROMPT_VERSION = PROMPT_FILE.stem.removeprefix("summary_")  # "v1"
 TEMPLATE_MODEL = "template"
@@ -57,11 +60,11 @@ class Item:
 
 # --- Source text -------------------------------------------------------------
 
-def build_source(item: Item) -> str:
-    """The text Claude sees, and the text the fact check compares against."""
+def build_source(item: Item, max_report_chars: int = MAX_REPORT_CHARS) -> str:
+    """The text the model sees, and the text the fact check compares against."""
     report = item.staff_report or ""
-    if len(report) > MAX_REPORT_CHARS:
-        report = report[:MAX_REPORT_CHARS] + "\n\n[Staff report truncated here]"
+    if len(report) > max_report_chars:
+        report = report[:max_report_chars] + "\n\n[Staff report truncated here]"
     parts = [
         f"Meeting: {item.body}, {item.date:%B} {item.date.day}, {item.date.year}",
         f"Agenda section: {item.section or 'unknown'}",
@@ -184,31 +187,102 @@ def fact_check(s: ItemSummary, source: str) -> list[str]:
     return flags
 
 
-# --- Claude ------------------------------------------------------------------
+# --- Summarizers -------------------------------------------------------------
 
-class Summarizer:
+class SummarizerUnavailable(Exception):
+    """The configured model can't be used right now (no key, server not running, ...)."""
+
+
+class SummaryFailed(Exception):
+    """One item couldn't be summarized; the next run tries again."""
+
+
+def make_summarizer():
+    """The summarizer named by SUMMARY_PROVIDER: "ollama" (default) or "anthropic"."""
+    provider = os.environ.get("SUMMARY_PROVIDER", "ollama").lower()
+    if provider == "ollama":
+        return OllamaSummarizer()
+    if provider == "anthropic":
+        return ClaudeSummarizer()
+    raise SummarizerUnavailable(f"unknown SUMMARY_PROVIDER {provider!r} (use 'ollama' or 'anthropic')")
+
+
+def _finish(result: ItemSummary, item: Item) -> ItemSummary:
+    # The agenda section is authoritative for consent and hearing items.
+    result.next_step = section_step(item.section) or result.next_step
+    return result
+
+
+class OllamaSummarizer:
+    """A local model served by Ollama (https://ollama.com). Free, but runs only where Ollama does."""
+
+    cost = 0.0
+
     def __init__(self):
+        self.host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        self.model = os.environ.get("OLLAMA_MODEL", "llama3.2")
+        # Ollama silently cuts prompts longer than its context window, so set it explicitly
+        # and keep the source within it (about 3 characters per token, minus room for the
+        # prompt and the answer).
+        self.num_ctx = int(os.environ.get("OLLAMA_NUM_CTX", "16384"))
+        self.max_report_chars = max(4_000, self.num_ctx * 3 - 8_000)
+        self.system = PROMPT_FILE.read_text()
+        try:
+            tags = requests.get(f"{self.host}/api/tags", timeout=5).json()
+        except requests.RequestException:
+            raise SummarizerUnavailable(f"Ollama isn't running at {self.host} (start it with: ollama serve)") from None
+        names = {m["name"] for m in tags.get("models", [])}
+        if self.model not in names and f"{self.model}:latest" not in names:
+            raise SummarizerUnavailable(f"Ollama model {self.model!r} isn't installed (run: ollama pull {self.model})")
+
+    def summarize(self, item: Item, source: str) -> tuple[ItemSummary, str]:
+        try:
+            resp = requests.post(f"{self.host}/api/chat", timeout=900, json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": self.system},
+                    {"role": "user", "content": source},
+                ],
+                "format": ItemSummary.model_json_schema(),  # constrain output to the schema
+                "stream": False,
+                "options": {"temperature": 0, "num_ctx": self.num_ctx},
+            })
+            resp.raise_for_status()
+            result = ItemSummary.model_validate_json(resp.json()["message"]["content"])
+        except (requests.RequestException, KeyError, ValidationError) as e:
+            raise SummaryFailed(str(e)) from e
+        return _finish(result, item), f"ollama/{self.model}"
+
+
+class ClaudeSummarizer:
+    """Claude through the Anthropic API (needs ANTHROPIC_API_KEY; billed per token)."""
+
+    max_report_chars = MAX_REPORT_CHARS
+
+    def __init__(self):
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise SummarizerUnavailable("ANTHROPIC_API_KEY is not set")
         self.client = anthropic.Anthropic()
         self.system = PROMPT_FILE.read_text()
         self.cost = 0.0
 
     def summarize(self, item: Item, source: str) -> tuple[ItemSummary, str]:
         """Returns (summary, model that wrote it)."""
-        resp = self.client.beta.messages.parse(
-            model=MODEL,
-            max_tokens=16000,
-            system=self.system,
-            messages=[{"role": "user", "content": source}],
-            output_format=ItemSummary,
-            output_config={"effort": "medium"},
-            # If a safety classifier declines, the API retries on a fallback model.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        )
+        try:
+            resp = self.client.beta.messages.parse(
+                model=MODEL,
+                max_tokens=16000,
+                system=self.system,
+                messages=[{"role": "user", "content": source}],
+                output_format=ItemSummary,
+                output_config={"effort": "medium"},
+                # If a safety classifier declines, the API retries on a fallback model.
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+            )
+        except anthropic.APIError as e:
+            raise SummaryFailed(str(e)) from e
         self.cost += (resp.usage.input_tokens * PRICE_IN + resp.usage.output_tokens * PRICE_OUT) / 1e6
         if resp.stop_reason == "refusal" or resp.parsed_output is None:
-            raise RuntimeError(f"no summary returned (stop_reason={resp.stop_reason})")
-        result = resp.parsed_output
-        # The agenda section is authoritative for consent and hearing items.
-        result.next_step = section_step(item.section) or result.next_step
-        return result, resp.model
+            raise SummaryFailed(f"no summary returned (stop_reason={resp.stop_reason})")
+        return _finish(resp.parsed_output, item), resp.model

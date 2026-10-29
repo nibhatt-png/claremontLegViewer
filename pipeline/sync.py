@@ -8,12 +8,10 @@ the last run are skipped unless --full is given.
 
 import argparse
 import logging
-import os
 import re
 from collections import Counter
 from datetime import datetime, timedelta
 
-import anthropic
 import psycopg
 from psycopg.types.json import Jsonb
 
@@ -232,29 +230,31 @@ class Sync:
             return
         summarizer = None
         if self.dry_run:
-            log.info("Dry run: templated summaries only, no Claude calls")
-        elif not os.environ.get("ANTHROPIC_API_KEY"):
-            log.warning("ANTHROPIC_API_KEY is not set: templated summaries only")
+            log.info("Dry run: templated summaries only, no model calls")
         else:
-            summarizer = summarize.Summarizer()
+            try:
+                summarizer = summarize.make_summarizer()
+            except summarize.SummarizerUnavailable as e:
+                log.warning("%s: templated summaries only", e)
 
-        claude_calls = 0
+        model_calls = 0
         for row in rows:
             *fields, matter_id = row
             atts = self.conn.execute(
                 "select name, extracted_text from attachments where matter_id = %s order by id", (matter_id,)
             ).fetchall()
             item = summarize.Item(*fields, attachments=atts)
-            source = summarize.build_source(item)
             if result := summarize.templated(item):
+                source = summarize.build_source(item)
                 model = summarize.TEMPLATE_MODEL
-            elif summarizer is None or (limit is not None and claude_calls >= limit):
+            elif summarizer is None or (limit is not None and model_calls >= limit):
                 continue
             else:
-                claude_calls += 1
+                model_calls += 1
+                source = summarize.build_source(item, summarizer.max_report_chars)
                 try:
                     result, model = summarizer.summarize(item, source)
-                except (anthropic.APIError, RuntimeError) as e:
+                except summarize.SummaryFailed as e:
                     log.warning("  item %s: summary failed: %s", item.id, e)
                     self.record("summaries", "failed")
                     continue
@@ -273,7 +273,8 @@ class Sync:
                      result.one_line, f"  FLAGGED: {flags}" if flags else "")
             self.finish()
         if summarizer:
-            log.info("Claude calls: %d, estimated cost $%.2f", claude_calls, summarizer.cost)
+            log.info("Model calls: %d%s", model_calls,
+                     f", estimated cost ${summarizer.cost:.2f}" if summarizer.cost else "")
 
     def reconnect_if_dropped(self) -> None:
         """Supabase's pooler can drop a connection left idle during slow downloads."""
@@ -296,7 +297,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="fetch everything but roll back all database writes")
     parser.add_argument("--full", action="store_true", help="re-sync events even if they haven't changed")
     parser.add_argument("--skip-summaries", action="store_true", help="don't generate summaries")
-    parser.add_argument("--summary-limit", type=int, help="max number of Claude summary calls this run")
+    parser.add_argument("--summary-limit", type=int, help="max number of model calls for summaries this run")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
