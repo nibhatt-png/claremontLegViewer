@@ -207,9 +207,17 @@ def make_summarizer():
     raise SummarizerUnavailable(f"unknown SUMMARY_PROVIDER {provider!r} (use 'ollama' or 'anthropic')")
 
 
+EMPTY_VALUES = {"", "none", "null", "n/a", "not stated", "not applicable"}
+
+
 def _finish(result: ItemSummary, item: Item) -> ItemSummary:
     # The agenda section is authoritative for consent and hearing items.
     result.next_step = section_step(item.section) or result.next_step
+    # Smaller models sometimes write "None" instead of returning null.
+    for field in ("cost_text", "affected_text"):
+        value = getattr(result, field)
+        if value is not None and value.strip().rstrip(".").lower() in EMPTY_VALUES:
+            setattr(result, field, None)
     return result
 
 
@@ -220,7 +228,7 @@ class OllamaSummarizer:
 
     def __init__(self):
         self.host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-        self.model = os.environ.get("OLLAMA_MODEL", "llama3.2")
+        self.model = os.environ.get("OLLAMA_MODEL", "qwen2.5:14b")
         # Ollama silently cuts prompts longer than its context window, so set it explicitly
         # and keep the source within it (about 3 characters per token, minus room for the
         # prompt and the answer).
