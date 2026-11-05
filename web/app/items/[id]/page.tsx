@@ -30,7 +30,7 @@ export default async function ItemPage({ params }: Props) {
   const notStated = "Not stated in the staff report";
 
   return (
-    <>
+    <div className="wrap page">
       <nav className="crumbs" aria-label="Breadcrumb">
         <Link href="/">This week</Link> <span aria-hidden="true">›</span>{" "}
         <Link href={`/meetings/${ev.id}`}>{ev.bodies.name}, {longDate(ev.date)}</Link>{" "}
@@ -107,6 +107,6 @@ export default async function ItemPage({ params }: Props) {
           <pre>{m.staff_report_text}</pre>
         </details>
       )}
-    </>
+    </div>
   );
 }

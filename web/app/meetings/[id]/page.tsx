@@ -25,7 +25,7 @@ export default async function MeetingPage({ params }: Props) {
   if (!meeting) notFound();
 
   return (
-    <>
+    <div className="wrap page">
       <nav className="crumbs" aria-label="Breadcrumb">
         <Link href="/">This week</Link> <span aria-hidden="true">›</span> <span>{meeting.bodies.name}</span>
       </nav>
@@ -43,7 +43,7 @@ export default async function MeetingPage({ params }: Props) {
         )}
       </ul>
       {meeting.event_items.length > 0 && <AiLabel plural />}
-      <MeetingCard meeting={meeting} showTitles />
-    </>
+      <MeetingCard meeting={meeting} showTitles headingLevel={2} />
+    </div>
   );
 }

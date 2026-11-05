@@ -24,6 +24,16 @@ export function longDate(isoDate: string, withYear = false): string {
   });
 }
 
+/** "November 9, 2026" */
+export function fullDate(isoDate: string): string {
+  return new Date(`${isoDate}T12:00:00Z`).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 /** "Oct 27, 2026" */
 export function shortDate(isoDate: string): string {
   return new Date(`${isoDate}T12:00:00Z`).toLocaleDateString("en-US", {

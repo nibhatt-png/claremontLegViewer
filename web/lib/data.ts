@@ -110,6 +110,72 @@ export async function getItem(id: number): Promise<ItemDetail | null> {
   return data as unknown as ItemDetail | null;
 }
 
+/** One agenda item with its meeting, for lists that span meetings (topics, hearings). */
+export type ListedItem = {
+  id: number;
+  agenda_number: string | null;
+  title: string;
+  section: string | null;
+  summaries: Pick<Summary, "one_line" | "next_step"> | null;
+  events: { id: number; date: string; time_text: string | null; bodies: { name: string } };
+};
+
+/** Every real agenda item at meetings between two dates (inclusive), newest meeting first. */
+export async function getItemsBetween(from: string, to?: string): Promise<ListedItem[]> {
+  let q = supabase
+    .from("event_items")
+    .select(`
+      id, agenda_number, title, section, sort_order,
+      summaries(one_line, next_step),
+      events!inner(id, date, time_text, bodies(name))`)
+    .not("matter_id", "is", null)
+    .gte("events.date", from);
+  if (to) q = q.lte("events.date", to);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = data as unknown as (ListedItem & { sort_order: number })[];
+  return rows.sort(
+    (a, b) => b.events.date.localeCompare(a.events.date) || a.events.id - b.events.id || a.sort_order - b.sort_order,
+  );
+}
+
+export type MeetingListing = {
+  id: number;
+  date: string;
+  time_text: string | null;
+  bodies: { name: string };
+  event_items: { id: number }[];
+};
+
+const LISTING_FIELDS = "id, date, time_text, bodies(name), event_items(id)";
+
+/** The most recent meetings before today, newest first. */
+export async function getRecentMeetings(limit = 6): Promise<MeetingListing[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select(LISTING_FIELDS)
+    .not("event_items.matter_id", "is", null)
+    .lt("date", todayInClaremont())
+    .order("date", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data as unknown as MeetingListing[];
+}
+
+/** Meetings from today through `days` days ahead, soonest first. */
+export async function getUpcomingMeetings(days: number): Promise<MeetingListing[]> {
+  const today = todayInClaremont();
+  const { data, error } = await supabase
+    .from("events")
+    .select(LISTING_FIELDS)
+    .not("event_items.matter_id", "is", null)
+    .gte("date", today)
+    .lte("date", addDays(today, days))
+    .order("date");
+  if (error) throw error;
+  return data as unknown as MeetingListing[];
+}
+
 export async function search(q: string): Promise<SearchResult[]> {
   const { data, error } = await supabase.rpc("search_items", { q, max_results: 30 });
   if (error) throw error;

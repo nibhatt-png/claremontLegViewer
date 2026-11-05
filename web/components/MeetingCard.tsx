@@ -2,7 +2,17 @@ import Link from "next/link";
 import type { Meeting } from "@/lib/data";
 import { locationLines, readableTitle, sectionLabel } from "@/lib/format";
 
-export function MeetingCard({ meeting, showTitles = false }: { meeting: Meeting; showTitles?: boolean }) {
+export function MeetingCard({
+  meeting,
+  showTitles = false,
+  headingLevel = 3,
+}: {
+  meeting: Meeting;
+  showTitles?: boolean;
+  headingLevel?: 2 | 3 | 4;
+}) {
+  const Heading = `h${headingLevel}` as const;
+  const SectionHeading = `h${headingLevel + 1}` as "h3" | "h4" | "h5";
   const [place, street] = locationLines(meeting.location);
   const groups: { label: string; items: Meeting["event_items"] }[] = [];
   for (const item of meeting.event_items) {
@@ -15,9 +25,9 @@ export function MeetingCard({ meeting, showTitles = false }: { meeting: Meeting;
   return (
     <article className="meeting" aria-labelledby={`m-${meeting.id}`}>
       <div className="meeting-head">
-        <h3 id={`m-${meeting.id}`}>
+        <Heading id={`m-${meeting.id}`}>
           <Link href={`/meetings/${meeting.id}`}>{meeting.bodies.name}</Link>
-        </h3>
+        </Heading>
         <p className="meta">
           {[meeting.time_text, place, street].filter(Boolean).join(" · ")}
         </p>
@@ -28,7 +38,7 @@ export function MeetingCard({ meeting, showTitles = false }: { meeting: Meeting;
       ) : (
         groups.map((g) => (
           <section key={g.label} aria-label={g.label}>
-            <h4 className="section-label">{g.label}</h4>
+            <SectionHeading className="section-label">{g.label}</SectionHeading>
             <ol className="items">
               {g.items.map((item) => (
                 <li key={item.id}>

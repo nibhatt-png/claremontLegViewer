@@ -17,7 +17,7 @@ export default async function SearchPage({ searchParams }: Props) {
   const results = q ? await search(q) : [];
 
   return (
-    <>
+    <div className="wrap page">
       <div>
         <h1>{q ? <>Results for &ldquo;{q}&rdquo;</> : "Search"}</h1>
         <p className="lede">
@@ -26,7 +26,7 @@ export default async function SearchPage({ searchParams }: Props) {
             : "Search titles, summaries, staff reports, and attached documents. Put a phrase in quotes to match it exactly."}
         </p>
       </div>
-      <SearchForm defaultValue={q} id="page-q" />
+      <SearchForm defaultValue={q} id="page-q" large />
       {q && results.length === 0 && <p>No agenda items mention that. Try a different word, or check the spelling.</p>}
       {results.length > 0 && (
         <ol className="results">
@@ -43,6 +43,6 @@ export default async function SearchPage({ searchParams }: Props) {
           ))}
         </ol>
       )}
-    </>
+    </div>
   );
 }
