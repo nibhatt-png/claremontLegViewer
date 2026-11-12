@@ -85,3 +85,17 @@ export const NEXT_STEP: Record<NextStep, { label: string; help: string }> = {
 export function locationLines(location: string | null): string[] {
   return (location ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
 }
+
+/** { dow: "Thu", day: "12", month: "November", mon: "Nov" } */
+export function dateParts(isoDate: string) {
+  const d = new Date(`${isoDate}T12:00:00Z`);
+  const f = (o: Intl.DateTimeFormatOptions) => d.toLocaleDateString("en-US", { timeZone: "UTC", ...o });
+  return { dow: f({ weekday: "short" }), day: f({ day: "numeric" }), month: f({ month: "long" }), mon: f({ month: "short" }) };
+}
+
+/** "6:30 PM" -> [18, 30], or null if the time isn't stated. */
+export function parseTime(text: string | null): [number, number] | null {
+  const m = text?.match(/(\d{1,2}):(\d{2})\s*([AP])\.?M/i);
+  if (!m) return null;
+  return [(Number(m[1]) % 12) + (m[3].toUpperCase() === "P" ? 12 : 0), Number(m[2])];
+}

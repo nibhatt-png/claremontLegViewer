@@ -1,43 +1,37 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { IBM_Plex_Mono, Public_Sans } from "next/font/google";
+import { Bricolage_Grotesque, Inter } from "next/font/google";
 import { SiteHeader } from "@/components/SiteHeader";
 import "./globals.css";
 
-const body = Public_Sans({ subsets: ["latin"], variable: "--font-body" });
-const data = IBM_Plex_Mono({ subsets: ["latin"], weight: ["500"], variable: "--font-data" });
+const body = Inter({ subsets: ["latin"], variable: "--font-body" });
+const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-display" });
 
 export const metadata: Metadata = {
   title: { default: "Claremont Explained", template: "%s · Claremont Explained" },
   description: "Claremont's city meetings, explained in plain English. See what's being decided, what it costs, and how to have your say.",
 };
 
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#151b18" },
-  ],
-};
+export const viewport: Viewport = { themeColor: "#FFFFFF" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${body.variable} ${data.variable}`}>
+    <html lang="en" className={`${body.variable} ${display.variable}`}>
       <body>
         <a className="skip" href="#main">Skip to content</a>
         <SiteHeader />
         <main id="main">{children}</main>
         <footer>
-          <div className="wrap footer-inner">
-            <p>
-              <strong>Claremont Explained</strong> is unofficial. Summaries are written by AI from the City of
-              Claremont&apos;s{" "}
-              <a href="https://claremontca.legistar.com/Calendar.aspx" target="_blank" rel="noopener">Legistar</a>{" "}
-              records. Always check the original documents.
-            </p>
-            <p>
-              <Link href="/how-it-works">How it works</Link> · <Link href="/have-your-say">Have your say</Link> ·{" "}
-              <Link href="/topics">Topics</Link>
-            </p>
+          <div className="wrap">
+            <span>An unofficial site. Not run by the City of Claremont.</span>
+            <nav aria-label="Footer">
+              <Link href="/search">Search</Link>
+              <Link href="/alerts">Email alerts</Link>
+              <span>
+                Source: the City&apos;s public{" "}
+                <a href="https://claremontca.legistar.com/Calendar.aspx" target="_blank" rel="noopener">Legistar</a> system
+              </span>
+            </nav>
           </div>
         </footer>
       </body>

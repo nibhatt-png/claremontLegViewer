@@ -38,7 +38,7 @@ export default async function ItemPage({ params }: Props) {
       </nav>
 
       <div>
-        <p className="eyebrow">
+        <p className="eyebrow plain">
           {[item.agenda_number && `Item ${item.agenda_number}`, sectionLabel(item.section), m.file_number && `File ${m.file_number}`]
             .filter(Boolean).join(" · ")}
         </p>
@@ -51,20 +51,28 @@ export default async function ItemPage({ params }: Props) {
           <AiLabel itemId={item.id} />
           <p className="summary">{s.summary}</p>
           <dl className="facts">
-            <dt>Cost</dt>
-            <dd>{s.cost_text ?? notStated}</dd>
-            <dt>Who&apos;s affected</dt>
-            <dd>{s.affected_text ?? notStated}</dd>
-            <dt>Next step</dt>
-            <dd>
-              <span className={`chip ${s.next_step}`}>{NEXT_STEP[s.next_step].label}</span>
-              <span className="meta block">{NEXT_STEP[s.next_step].help}</span>
-            </dd>
-            <dt>Meeting</dt>
-            <dd>
-              <Link href={`/meetings/${ev.id}`}>{ev.bodies.name}</Link>
-              <span className="meta block">{longDate(ev.date, true)}{ev.time_text && `, ${ev.time_text}`}</span>
-            </dd>
+            <div className="fact" style={{ background: "#DCFCE7" }}>
+              <dt style={{ color: "#166534" }}>Cost</dt>
+              <dd>{s.cost_text ?? notStated}</dd>
+            </div>
+            <div className="fact" style={{ background: "#E0F2FE" }}>
+              <dt style={{ color: "#075985" }}>Who&apos;s affected</dt>
+              <dd>{s.affected_text ?? notStated}</dd>
+            </div>
+            <div className="fact" style={{ background: "#FFEDD5" }}>
+              <dt style={{ color: "#9A3412" }}>Next step</dt>
+              <dd>
+                <strong>{NEXT_STEP[s.next_step].label}</strong>
+                <span className="block">{NEXT_STEP[s.next_step].help}</span>
+              </dd>
+            </div>
+            <div className="fact" style={{ background: "#F6F1EA" }}>
+              <dt style={{ color: "var(--fg-2)" }}>Meeting</dt>
+              <dd>
+                <Link href={`/meetings/${ev.id}`}>{ev.bodies.name}</Link>
+                <span className="block">{longDate(ev.date, true)}{ev.time_text && `, ${ev.time_text}`}</span>
+              </dd>
+            </div>
           </dl>
         </>
       ) : (

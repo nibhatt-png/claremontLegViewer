@@ -181,3 +181,15 @@ export async function search(q: string): Promise<SearchResult[]> {
   if (error) throw error;
   return data as SearchResult[];
 }
+
+/** Meetings held on one date. */
+export async function getMeetingsOn(date: string): Promise<MeetingListing[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select(LISTING_FIELDS)
+    .not("event_items.matter_id", "is", null)
+    .eq("date", date)
+    .order("id");
+  if (error) throw error;
+  return data as unknown as MeetingListing[];
+}

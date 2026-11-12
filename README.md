@@ -118,6 +118,26 @@ template summaries only. Run `python -m pipeline.sync` on your computer to write
 scheduled runs write summaries too, switch to Claude: add the `ANTHROPIC_API_KEY` secret and set
 `SUMMARY_PROVIDER: anthropic` in the workflow's `env`.
 
+### 5. Email alerts
+
+People sign up on the site's **Get email alerts** page for a weekly email (sent Fridays) and/or
+alerts when a topic they follow comes up. Sign-up is double opt-in: nothing is sent until they click
+the link in a confirmation email. `python -m pipeline.alerts` sends the emails; the scheduled
+workflow runs it after each sync. Use `--dry-run` to see who would get what without sending.
+
+Setup:
+
+1. Pick a Gmail account to send from, turn on 2-Step Verification, and create an app password at
+   <https://myaccount.google.com/apppasswords>.
+2. In `.env` (pipeline) set `GMAIL_USER`, `GMAIL_APP_PASSWORD` and `SITE_URL`.
+3. In `web/.env.local` set `GMAIL_USER`, `GMAIL_APP_PASSWORD` and `SUPABASE_SECRET_KEY` (Supabase →
+   Project Settings → API Keys → secret key). The alerts page shows a "not switched on yet" note
+   until these are set.
+4. On GitHub add the secrets `GMAIL_USER` and `GMAIL_APP_PASSWORD`, and under the **Variables** tab
+   the variable `SITE_URL` (the site's public address).
+
+Topics are defined in [web/lib/topics.json](web/lib/topics.json), shared by the site and the emails.
+
 ## Reviewing flagged summaries
 
 In the Supabase SQL editor:

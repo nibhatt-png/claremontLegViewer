@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Icon } from "./Icon";
 
 const NAV = [
   { href: "/", label: "This week" },
   { href: "/topics", label: "Topics" },
-  { href: "/search", label: "Search" },
+  { href: "/guide", label: "Guide" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/have-your-say", label: "Have your say" },
 ];
@@ -21,13 +22,7 @@ export function SiteHeader() {
     <header className="site">
       <div className="site-inner">
         <Link className="brand" href="/">
-          <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-              <path d="M4 20V9.5L12 4l8 5.5V20" />
-              <path d="M9.5 20v-6h5v6" />
-              <path d="M2.5 20h19" />
-            </svg>
-          </span>
+          <span className="brand-mark"><Icon name="home" size={20} /></span>
           Claremont Explained
         </Link>
         <nav className="site-nav" aria-label="Main">
@@ -41,7 +36,7 @@ export function SiteHeader() {
             ))}
           </ul>
         </nav>
-        <Link className="button alerts" href="/alerts">Get email alerts</Link>
+        <Link className="button dark" href="/alerts"><Icon name="bell" size={18} />Get alerts</Link>
       </div>
     </header>
   );

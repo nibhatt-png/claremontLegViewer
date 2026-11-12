@@ -1,0 +1,110 @@
+[
+  {
+    "slug": "housing",
+    "name": "Housing",
+    "blurb": "Affordable housing, rentals, short-term rentals and rental assistance.",
+    "short": "Affordable housing and rentals",
+    "color": "#C2410C",
+    "soft": "#FFEDD5",
+    "pattern": "\\b(housing|rentals?|renters?|tenants?|homeless\\w*|inclusionary|affordable)\\b"
+  },
+  {
+    "slug": "budget",
+    "name": "Budget and taxes",
+    "blurb": "The city budget, fees, rates, bonds and investments.",
+    "short": "Budget, fees, rates and bonds",
+    "color": "#15803D",
+    "soft": "#DCFCE7",
+    "pattern": "\\b(budget|general fund|fees?|rates?|bonds?|tax(es)?|investments?|financial|warrant registers?|proposition 218)\\b"
+  },
+  {
+    "slug": "contracts",
+    "name": "Contracts and spending",
+    "blurb": "Agreements with companies and consultants, and purchases.",
+    "short": "Companies, consultants, purchases",
+    "color": "#4338CA",
+    "soft": "#E0E7FF",
+    "pattern": "\\b(agreements?|contracts?|award|purchase|compensation|lease)\\b"
+  },
+  {
+    "slug": "development",
+    "name": "Planning and development",
+    "blurb": "Zoning, building projects, permits and changes to land-use rules.",
+    "short": "Zoning, building and permits",
+    "color": "#7E22CE",
+    "soft": "#F3E8FF",
+    "pattern": "\\b(zoning|conditional use permit|site plan|development|buildings?|drive-through|title 16)\\b"
+  },
+  {
+    "slug": "streets",
+    "name": "Streets and transportation",
+    "blurb": "Roads, traffic, walking, biking, transit and parking.",
+    "short": "Roads, traffic, biking, parking",
+    "color": "#A16207",
+    "soft": "#FEF9C3",
+    "pattern": "\\b(complete streets|street (improvements?|repairs?|resurfacing)|paving|traffic|transportation|sidewalks?|crosswalks?|bikes?|bicycl\\w*|pedestrians?|dial-a-ride|parking)\\b"
+  },
+  {
+    "slug": "utilities",
+    "name": "Sewer, water and trash",
+    "blurb": "Sewer, sanitation, street sweeping, water and trash service.",
+    "short": "Sanitation and trash service",
+    "color": "#0369A1",
+    "soft": "#E0F2FE",
+    "pattern": "\\b(sewer|sanitation|trash|water|storm ?drain|street sweeping|containers?)\\b"
+  },
+  {
+    "slug": "parks",
+    "name": "Parks and trees",
+    "blurb": "Parks, the urban forest, wilderness areas and recreation.",
+    "short": "Parks, urban forest, recreation",
+    "color": "#047857",
+    "soft": "#D1FAE5",
+    "pattern": "\\b(parks?|trees?|urban forest|wilderness|recreation|sports|basketball)\\b"
+  },
+  {
+    "slug": "safety",
+    "name": "Public safety",
+    "blurb": "Police, fire, crime data and emergency services.",
+    "short": "Police, fire, emergencies",
+    "color": "#B91C1C",
+    "soft": "#FEE2E2",
+    "pattern": "\\b(police|fire|crime|tasers?|emergency|highway patrol|alcoholic beverage control)\\b"
+  },
+  {
+    "slug": "history",
+    "name": "Historic preservation",
+    "blurb": "Historic homes, Mills Act agreements and the local register.",
+    "short": "Historic homes, Mills Act",
+    "color": "#92400E",
+    "soft": "#FEF3C7",
+    "pattern": "\\b(mills act|historic\\w*|preservation|local register)\\b"
+  },
+  {
+    "slug": "environment",
+    "name": "Environment",
+    "blurb": "Sustainability, climate and waste reduction.",
+    "short": "Climate and waste reduction",
+    "color": "#0F766E",
+    "soft": "#CCFBF1",
+    "pattern": "\\b(sustainability|climate|emissions|solar|recycl\\w*|bear-resistant)\\b"
+  },
+  {
+    "slug": "community",
+    "name": "Community services",
+    "blurb": "Grants, seniors, youth, and human services programs.",
+    "short": "Seniors, youth, grants",
+    "color": "#BE185D",
+    "soft": "#FCE7F3",
+    "pattern": "\\b(grants?|seniors?|aging|teens?|youth|community based organization|human services|mental health)\\b"
+  },
+  {
+    "slug": "government",
+    "name": "City government",
+    "blurb": "Appointments, ethics rules, city staff and how commissions run.",
+    "short": "Appointments, ethics, staff",
+    "color": "#334155",
+    "soft": "#E2E8F0",
+    "pattern": "\\b(appoint\\w*|conflict of interest|chair|open meeting|director|website)\\b"
+  }
+]
